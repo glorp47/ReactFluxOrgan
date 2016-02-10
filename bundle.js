@@ -47,9 +47,9 @@
 	var React = __webpack_require__(1),
 	    ReactDOM = __webpack_require__(158),
 	    Organ = __webpack_require__(159),
-	    $ = __webpack_require__(191);
+	    $ = __webpack_require__(193);
 	
-	__webpack_require__(199);
+	__webpack_require__(198);
 	
 	$(function () {
 	    var root = document.getElementById('root');
@@ -19658,8 +19658,8 @@
 	var React = __webpack_require__(1),
 	    NoteKey = __webpack_require__(160),
 	    JukeBox = __webpack_require__(188),
-	    Recorder = __webpack_require__(195),
-	    Controls = __webpack_require__(196),
+	    Recorder = __webpack_require__(191),
+	    Controls = __webpack_require__(195),
 	    TONES = __webpack_require__(187),
 	    KeyStore = __webpack_require__(161),
 	    FilterStore = __webpack_require__(184);
@@ -26759,8 +26759,7 @@
 	var React = __webpack_require__(1),
 	    TrackStore = __webpack_require__(189),
 	    TrackActions = __webpack_require__(186),
-	    TrackApiUtil = __webpack_require__(190),
-	    TrackPlayer = __webpack_require__(194);
+	    TrackPlayer = __webpack_require__(190);
 	
 	var JukeBox = React.createClass({
 	  displayName: 'JukeBox',
@@ -26771,17 +26770,6 @@
 	
 	  getInitialState: function () {
 	    return { tracks: TrackStore.all() };
-	  },
-	
-	  _readCookie: function (name) {
-	    var nameEQ = name + "=";
-	    var ca = document.cookie.split(';');
-	    for (var i = 0; i < ca.length; i++) {
-	      var c = ca[i];
-	      while (c.charAt(0) == ' ') c = c.substring(1, c.length);
-	      if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
-	    }
-	    return null;
 	  },
 	
 	  render: function () {
@@ -26835,26 +26823,6 @@
 	  }
 	};
 	
-	TrackStore._createCookie = function (name, value) {
-	
-	  var date = new Date();
-	  date.setTime(date.getTime() + 24 * 60 * 60 * 1000);
-	  var expires = "; expires=" + date.toGMTString();
-	
-	  document.cookie = name + "=" + value + expires + "; path=/";
-	};
-	
-	TrackStore._readCookie = function (name) {
-	  var nameEQ = name + "=";
-	  var ca = document.cookie.split(';');
-	  for (var i = 0; i < ca.length; i++) {
-	    var c = ca[i];
-	    while (c.charAt(0) == ' ') c = c.substring(1, c.length);
-	    if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
-	  }
-	  return null;
-	};
-	
 	TrackStore._addTrack = function (track) {
 	  var idx = _tracks.indexOf(track);
 	  if (idx == -1) {
@@ -26882,74 +26850,343 @@
 /* 190 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var $ = __webpack_require__(191),
-	    Track = __webpack_require__(192),
-	    AppDispatcher = __webpack_require__(181),
-	    TrackActions = __webpack_require__(186);
+	var React = __webpack_require__(1);
 	
-	var TrackApiUtil = {
-	  createTrack: function (track) {
-	    $.ajax({
-	      url: '/api/tracks',
-	      method: 'POST',
-	      data: JSON.stringify({ track: track }),
-	      dataType: 'json',
-	      contentType: "application/json",
+	var TrackPlayer = React.createClass({
+	  displayName: "TrackPlayer",
 	
-	      beforeSend: function (xhr) {
-	        xhr.setRequestHeader('X-CSRF-Token', $('meta[name="csrf-token"]').attr('content'));
-	      },
-	
-	      success: function (track) {
-	        TrackActions.addTrack(new Track(track));
-	      }
-	    });
+	  getInitialState: function () {
+	    return { looping: false };
 	  },
 	
-	  fetchTracks: function () {
-	    $.getJSON('/api/tracks', function (trackObjects) {
-	      var tracks = trackObjects.map(function (trackData) {
-	        return new Track(trackData);
-	      });
-	
-	      TrackActions.resetTracks(tracks);
-	    });
+	  isLooping: function () {
+	    return this.state.looping;
 	  },
 	
-	  destroyTrack: function (trackId) {
-	    if (!trackId) {
+	  playClick: function () {
+	    this.props.track.play();
+	  },
+	
+	  destroyClick: function () {
+	    this.props.track.destroy();
+	  },
+	
+	  loopMessage: function () {
+	    if (this.isLooping()) {
+	      return "Stop Loop";
+	    } else {
+	      return "Start Loop";
+	    }
+	  },
+	
+	  loopClick: function (e) {
+	    if (this.state.looping) {
+	      this.setState({ looping: false });
+	    } else {
+	
+	      this.loop();
+	      this.setState({ looping: true });
+	    }
+	  },
+	
+	  loop: function () {
+	    if (this.interval) {
 	      return;
 	    }
-	    $.ajax({
-	      url: "/api/tracks/" + trackId,
-	      type: "DELETE",
-	      beforeSend: function (xhr) {
-	        xhr.setRequestHeader('X-CSRF-Token', $('meta[name="csrf-token"]').attr('content'));
-	      },
-	      success: function (trackId) {
-	        TrackActions.destroyTrack(trackId);
+	
+	    var currentNote = 0,
+	        playBackStartTime = Date.now(),
+	        roll = this.props.track.attributes.roll,
+	        delta;
+	
+	    this.interval = setInterval(function () {
+	      if (currentNote < roll.length) {
+	        delta = Date.now() - playBackStartTime;
+	
+	        if (delta >= roll[currentNote].time) {
+	          var notes = roll[currentNote].notes || [];
+	          KeyActions.groupUpdate(notes);
+	          currentNote++;
+	        }
+	      } else {
+	        clearInterval(this.interval);
+	        delete this.interval;
+	        if (this.state.looping) {
+	          this.loop();
+	        };
 	      }
-	    });
+	    }.bind(this), 1);
+	  },
+	
+	  render: function () {
+	
+	    return React.createElement(
+	      "div",
+	      { className: "track" },
+	      React.createElement(
+	        "p",
+	        { className: "track-name" },
+	        this.props.track.get('name')
+	      ),
+	      React.createElement(
+	        "button",
+	        { onClick: this.playClick },
+	        "Play"
+	      ),
+	      React.createElement(
+	        "button",
+	        { onClick: this.loopClick },
+	        this.loopMessage()
+	      ),
+	      React.createElement(
+	        "button",
+	        { onClick: this.destroyClick },
+	        "Delete"
+	      )
+	    );
 	  }
 	
-	};
-	
-	AppDispatcher.register(function (payload) {
-	  switch (payload.actionType) {
-	    case OrganConstants.CREATE_TRACK:
-	      TrackApiUtil.createTrack(payload.track);
-	      break;
-	    case OrganConstants.DESTROY_TRACK:
-	      TrackApiUtil.destroyTrack(payload.track);
-	      break;
-	    default:
-	  }
 	});
 	
-	module.exports = TrackApiUtil;
+	module.exports = TrackPlayer;
 
 /***/ },
 /* 191 */
+/***/ function(module, exports, __webpack_require__) {
+
+	var React = __webpack_require__(1),
+	    Track = __webpack_require__(192),
+	    KeyStore = __webpack_require__(161);
+	
+	var Recorder = React.createClass({
+	  displayName: 'Recorder',
+	
+	  componentDidMount: function () {
+	    KeyStore.addListener(this._keysChanged);
+	  },
+	
+	  getInitialState: function () {
+	    return { recording: false, track: new Track() };
+	  },
+	
+	  isDoneRecording: function () {
+	    return !this.isTrackNew() && !this.state.recording;
+	  },
+	
+	  isRecording: function () {
+	    return this.state.recording;
+	  },
+	
+	  isTrackNew: function () {
+	    return this.state.track.isBlank();
+	  },
+	
+	  playClass: function () {
+	    return  true ? "" : " disabled";
+	  },
+	
+	  playClick: function (e) {
+	    if (!this.isTrackNew()) {
+	      this.state.track.play();
+	    }
+	  },
+	
+	  recordingMessage: function () {
+	    if (this.isRecording()) {
+	      return "Stop Recording";
+	    } else if (this.isDoneRecording()) {
+	      return "Record New Session";
+	    } else {
+	      return "Start Recording";
+	    }
+	  },
+	
+	  recordClick: function (e) {
+	    if (this.state.recording) {
+	      this.state.track.completeRecording();
+	      this.setState({ recording: false });
+	    } else {
+	      this.setState({ recording: true });
+	      this.state.track.startRecording();
+	    }
+	  },
+	
+	  render: function () {
+	    var hasTrack = this.isTrackNew();
+	
+	    return React.createElement(
+	      'div',
+	      { className: 'recorder' },
+	      React.createElement(
+	        'h3',
+	        null,
+	        'Recorder'
+	      ),
+	      React.createElement(
+	        'button',
+	        { onClick: this.recordClick, className: 'record-button' },
+	        this.recordingMessage()
+	      ),
+	      this.trackSavingElements(),
+	      React.createElement(
+	        'button',
+	        { onClick: this.playClick, className: this.playClass() },
+	        'Play'
+	      )
+	    );
+	  },
+	
+	  saveTrack: function (e) {
+	    this.state.track.set('name', prompt("Type in the saved track name"));
+	    this.state.track.save();
+	  },
+	
+	  trackSavingElements: function () {
+	    if (this.isDoneRecording()) {
+	      return React.createElement(
+	        'button',
+	        { onClick: this.saveTrack, className: 'control' },
+	        'Save Track'
+	      );
+	    }
+	  },
+	
+	  _keysChanged: function () {
+	    if (this.state.recording) {
+	      this.state.track.addNotes(KeyStore.all());
+	    }
+	  }
+	});
+	
+	module.exports = Recorder;
+
+/***/ },
+/* 192 */
+/***/ function(module, exports, __webpack_require__) {
+
+	var $ = __webpack_require__(193),
+	    KeyActions = __webpack_require__(194),
+	    TrackActions = __webpack_require__(186);
+	
+	function Track(attrs) {
+	  var defaults = {
+	    name: "",
+	    roll: []
+	  };
+	
+	  this.attributes = $.extend(defaults, attrs || {});
+	}
+	
+	Track.prototype = {
+	  addNotes: function (notes) {
+	    var timeSlice = { time: this._timeDelta() };
+	    if (notes.length > 0) {
+	      timeSlice.notes = notes;
+	    }
+	    this.attributes.roll.push(timeSlice);
+	  },
+	
+	  completeRecording: function () {
+	    this.addNotes([]);
+	  },
+	
+	  get: function (attr) {
+	    return this.attributes[attr];
+	  },
+	
+	  isBlank: function () {
+	    return this.attributes.roll.length === 0;
+	  },
+	
+	  destroy: function () {
+	    TrackActions.destroyTrack(this.attributes.id);
+	  },
+	
+	  play: function () {
+	    if (this.interval) {
+	      return;
+	    }
+	
+	    var currentNote = 0,
+	        playBackStartTime = Date.now(),
+	        roll = this.attributes.roll,
+	        delta;
+	
+	    this.interval = setInterval(function () {
+	      if (currentNote < roll.length) {
+	        delta = Date.now() - playBackStartTime;
+	
+	        if (delta >= roll[currentNote].time) {
+	          var notes = roll[currentNote].notes || [];
+	          KeyActions.groupUpdate(notes);
+	          currentNote++;
+	        }
+	      } else {
+	        clearInterval(this.interval);
+	        delete this.interval;
+	      }
+	    }.bind(this), 1);
+	  },
+	
+	  loop: function (continueLoop) {
+	    if (this.interval) {
+	      return;
+	    }
+	
+	    var currentNote = 0,
+	        playBackStartTime = Date.now(),
+	        roll = this.attributes.roll,
+	        delta;
+	
+	    this.interval = setInterval(function () {
+	      if (currentNote < roll.length) {
+	        delta = Date.now() - playBackStartTime;
+	
+	        if (delta >= roll[currentNote].time) {
+	          var notes = roll[currentNote].notes || [];
+	          KeyActions.groupUpdate(notes);
+	          currentNote++;
+	        }
+	      } else {
+	        clearInterval(this.interval);
+	        delete this.interval;
+	        this.loop(continueLoop);
+	      }
+	    }.bind(this), 1);
+	  },
+	
+	  stop: function () {
+	    clearInterval(this.interval);
+	  },
+	
+	  set: function (attr, val) {
+	    this.attributes[attr] = val;
+	  },
+	
+	  save: function () {
+	    if (this.isBlank()) {
+	      throw "track can't be blank!";
+	    } else if (this.attributes.name === "") {
+	      throw "name can't be blank!";
+	    } else {
+	      TrackActions.createTrack(this.attributes);
+	    }
+	  },
+	
+	  startRecording: function () {
+	    this.attributes.roll = [];
+	    this.start = Date.now();
+	  },
+	
+	  _timeDelta: function () {
+	    return Date.now() - this.start;
+	  }
+	};
+	
+	module.exports = Track;
+
+/***/ },
+/* 193 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;/*!
@@ -36786,132 +37023,7 @@
 
 
 /***/ },
-/* 192 */
-/***/ function(module, exports, __webpack_require__) {
-
-	var $ = __webpack_require__(191),
-	    KeyActions = __webpack_require__(193),
-	    TrackActions = __webpack_require__(186);
-	
-	function Track(attrs) {
-	  var defaults = {
-	    name: "",
-	    roll: []
-	  };
-	
-	  this.attributes = $.extend(defaults, attrs || {});
-	}
-	
-	Track.prototype = {
-	  addNotes: function (notes) {
-	    var timeSlice = { time: this._timeDelta() };
-	    if (notes.length > 0) {
-	      timeSlice.notes = notes;
-	    }
-	    this.attributes.roll.push(timeSlice);
-	  },
-	
-	  completeRecording: function () {
-	    this.addNotes([]);
-	  },
-	
-	  get: function (attr) {
-	    return this.attributes[attr];
-	  },
-	
-	  isBlank: function () {
-	    return this.attributes.roll.length === 0;
-	  },
-	
-	  destroy: function () {
-	    TrackActions.destroyTrack(this.attributes.id);
-	  },
-	
-	  play: function () {
-	    if (this.interval) {
-	      return;
-	    }
-	
-	    var currentNote = 0,
-	        playBackStartTime = Date.now(),
-	        roll = this.attributes.roll,
-	        delta;
-	
-	    this.interval = setInterval(function () {
-	      if (currentNote < roll.length) {
-	        delta = Date.now() - playBackStartTime;
-	
-	        if (delta >= roll[currentNote].time) {
-	          var notes = roll[currentNote].notes || [];
-	          KeyActions.groupUpdate(notes);
-	          currentNote++;
-	        }
-	      } else {
-	        clearInterval(this.interval);
-	        delete this.interval;
-	      }
-	    }.bind(this), 1);
-	  },
-	
-	  loop: function (continueLoop) {
-	    if (this.interval) {
-	      return;
-	    }
-	
-	    var currentNote = 0,
-	        playBackStartTime = Date.now(),
-	        roll = this.attributes.roll,
-	        delta;
-	
-	    this.interval = setInterval(function () {
-	      if (currentNote < roll.length) {
-	        delta = Date.now() - playBackStartTime;
-	
-	        if (delta >= roll[currentNote].time) {
-	          var notes = roll[currentNote].notes || [];
-	          KeyActions.groupUpdate(notes);
-	          currentNote++;
-	        }
-	      } else {
-	        clearInterval(this.interval);
-	        delete this.interval;
-	        this.loop(continueLoop);
-	      }
-	    }.bind(this), 1);
-	  },
-	
-	  stop: function () {
-	    clearInterval(this.interval);
-	  },
-	
-	  set: function (attr, val) {
-	    this.attributes[attr] = val;
-	  },
-	
-	  save: function () {
-	    if (this.isBlank()) {
-	      throw "track can't be blank!";
-	    } else if (this.attributes.name === "") {
-	      throw "name can't be blank!";
-	    } else {
-	      TrackActions.createTrack(this.attributes);
-	    }
-	  },
-	
-	  startRecording: function () {
-	    this.attributes.roll = [];
-	    this.start = Date.now();
-	  },
-	
-	  _timeDelta: function () {
-	    return Date.now() - this.start;
-	  }
-	};
-	
-	module.exports = Track;
-
-/***/ },
-/* 193 */
+/* 194 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var AppDispatcher = __webpack_require__(181),
@@ -36943,227 +37055,13 @@
 	module.exports = KeyActions;
 
 /***/ },
-/* 194 */
-/***/ function(module, exports, __webpack_require__) {
-
-	var React = __webpack_require__(1);
-	
-	var TrackPlayer = React.createClass({
-	  displayName: "TrackPlayer",
-	
-	  getInitialState: function () {
-	    return { looping: false };
-	  },
-	
-	  isLooping: function () {
-	    return this.state.looping;
-	  },
-	
-	  playClick: function () {
-	    this.props.track.play();
-	  },
-	
-	  destroyClick: function () {
-	    this.props.track.destroy();
-	  },
-	
-	  loopMessage: function () {
-	    if (this.isLooping()) {
-	      return "Stop Loop";
-	    } else {
-	      return "Start Loop";
-	    }
-	  },
-	
-	  loopClick: function (e) {
-	    if (this.state.looping) {
-	      this.setState({ looping: false });
-	    } else {
-	
-	      this.loop();
-	      this.setState({ looping: true });
-	    }
-	  },
-	
-	  loop: function () {
-	    if (this.interval) {
-	      return;
-	    }
-	
-	    var currentNote = 0,
-	        playBackStartTime = Date.now(),
-	        roll = this.props.track.attributes.roll,
-	        delta;
-	
-	    this.interval = setInterval(function () {
-	      if (currentNote < roll.length) {
-	        delta = Date.now() - playBackStartTime;
-	
-	        if (delta >= roll[currentNote].time) {
-	          var notes = roll[currentNote].notes || [];
-	          KeyActions.groupUpdate(notes);
-	          currentNote++;
-	        }
-	      } else {
-	        clearInterval(this.interval);
-	        delete this.interval;
-	        if (this.state.looping) {
-	          this.loop();
-	        };
-	      }
-	    }.bind(this), 1);
-	  },
-	
-	  render: function () {
-	
-	    return React.createElement(
-	      "div",
-	      { className: "track" },
-	      React.createElement(
-	        "p",
-	        { className: "track-name" },
-	        this.props.track.get('name')
-	      ),
-	      React.createElement(
-	        "button",
-	        { onClick: this.playClick },
-	        "Play"
-	      ),
-	      React.createElement(
-	        "button",
-	        { onClick: this.loopClick },
-	        this.loopMessage()
-	      ),
-	      React.createElement(
-	        "button",
-	        { onClick: this.destroyClick },
-	        "Delete"
-	      )
-	    );
-	  }
-	
-	});
-	
-	module.exports = TrackPlayer;
-
-/***/ },
 /* 195 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var React = __webpack_require__(1),
-	    Track = __webpack_require__(192),
-	    KeyStore = __webpack_require__(161);
-	
-	var Recorder = React.createClass({
-	  displayName: 'Recorder',
-	
-	  componentDidMount: function () {
-	    KeyStore.addListener(this._keysChanged);
-	  },
-	
-	  getInitialState: function () {
-	    return { recording: false, track: new Track() };
-	  },
-	
-	  isDoneRecording: function () {
-	    return !this.isTrackNew() && !this.state.recording;
-	  },
-	
-	  isRecording: function () {
-	    return this.state.recording;
-	  },
-	
-	  isTrackNew: function () {
-	    return this.state.track.isBlank();
-	  },
-	
-	  playClass: function () {
-	    return  true ? "" : " disabled";
-	  },
-	
-	  playClick: function (e) {
-	    if (!this.isTrackNew()) {
-	      this.state.track.play();
-	    }
-	  },
-	
-	  recordingMessage: function () {
-	    if (this.isRecording()) {
-	      return "Stop Recording";
-	    } else if (this.isDoneRecording()) {
-	      return "Record New Session";
-	    } else {
-	      return "Start Recording";
-	    }
-	  },
-	
-	  recordClick: function (e) {
-	    if (this.state.recording) {
-	      this.state.track.completeRecording();
-	      this.setState({ recording: false });
-	    } else {
-	      this.setState({ recording: true });
-	      this.state.track.startRecording();
-	    }
-	  },
-	
-	  render: function () {
-	    var hasTrack = this.isTrackNew();
-	
-	    return React.createElement(
-	      'div',
-	      { className: 'recorder' },
-	      React.createElement(
-	        'h3',
-	        null,
-	        'Recorder'
-	      ),
-	      React.createElement(
-	        'button',
-	        { onClick: this.recordClick, className: 'record-button' },
-	        this.recordingMessage()
-	      ),
-	      this.trackSavingElements(),
-	      React.createElement(
-	        'button',
-	        { onClick: this.playClick, className: this.playClass() },
-	        'Play'
-	      )
-	    );
-	  },
-	
-	  saveTrack: function (e) {
-	    this.state.track.set('name', prompt("Type in the saved track name"));
-	    this.state.track.save();
-	  },
-	
-	  trackSavingElements: function () {
-	    if (this.isDoneRecording()) {
-	      return React.createElement(
-	        'button',
-	        { onClick: this.saveTrack, className: 'control' },
-	        'Save Track'
-	      );
-	    }
-	  },
-	
-	  _keysChanged: function () {
-	    if (this.state.recording) {
-	      this.state.track.addNotes(KeyStore.all());
-	    }
-	  }
-	});
-	
-	module.exports = Recorder;
-
-/***/ },
-/* 196 */
-/***/ function(module, exports, __webpack_require__) {
-
-	var React = __webpack_require__(1),
-	    FilterActions = __webpack_require__(197),
+	    FilterActions = __webpack_require__(196),
 	    FilterStore = __webpack_require__(184),
-	    ReactSlider = __webpack_require__(198);
+	    ReactSlider = __webpack_require__(197);
 	
 	var Controls = React.createClass({
 	  displayName: 'Controls',
@@ -37176,7 +37074,7 @@
 	
 	  handleVolumeChange: function (event) {
 	    this.setState({ volume: parseFloat(event.target.value) });
-	    FilterActions.updateVolume(event.target.value);;
+	    FilterActions.updateVolume(event.target.value);
 	  },
 	
 	  handleWaveformChange: function (event) {
@@ -37244,7 +37142,7 @@
 	module.exports = Controls;
 
 /***/ },
-/* 197 */
+/* 196 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var AppDispatcher = __webpack_require__(181),
@@ -37270,7 +37168,7 @@
 	module.exports = FilterActions;
 
 /***/ },
-/* 198 */
+/* 197 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;(function (root, factory) {
@@ -38068,11 +37966,11 @@
 
 
 /***/ },
-/* 199 */
+/* 198 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var $ = __webpack_require__(191);
-	KeyActions = __webpack_require__(193), TONES = __webpack_require__(187);
+	var $ = __webpack_require__(193);
+	KeyActions = __webpack_require__(194), TONES = __webpack_require__(187);
 	
 	$(function () {
 	  var NOTE_MAP = {},
